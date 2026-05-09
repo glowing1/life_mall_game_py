@@ -1,1 +1,472 @@
-hello
+import sys
+import random
+from textwrap import dedent
+
+# ------------- DATA MODELS -------------
+
+class Job:
+    def __init__(self, name, base_salary, tier, choices):
+        """
+        choices: list of (description, effect) where effect in {"good", "neutral", "bad"}
+        """
+        self.name = name
+        self.base_salary = base_salary
+        self.tier = tier
+        self.choices = choices
+        self.performance = 50  # 0–100
+
+    def work_day(self):
+        print(f"\nYou go to work at {self.name}.")
+        print(f"Current performance: {self.performance}/100")
+        print("Choose what you do today:")
+
+        for i, (desc, effect) in enumerate(self.choices, start=1):
+            print(f"  {i}. {desc}")
+
+        choice = input("> ").strip()
+        if not choice.isdigit() or not (1 <= int(choice) <= len(self.choices)):
+            print("You hesitate and do nothing. Your manager is not impressed.")
+            self._apply_effect("bad")
+            return 0
+
+        _, effect = self.choices[int(choice) - 1]
+        self._apply_effect(effect)
+
+        # Salary is slightly boosted by performance
+        salary = int(self.base_salary * (0.5 + self.performance / 200))
+        print(f"You earn £{salary} today.")
+        return salary
+
+    def _apply_effect(self, effect):
+        if effect == "good":
+            delta = random.randint(8, 15)
+            print("Great choice! Your performance improves.")
+        elif effect == "neutral":
+            delta = random.randint(-3, 3)
+            print("An okay day. Not great, not terrible.")
+        else:
+            delta = -random.randint(8, 15)
+            print("Oof. That was not a good move at work.")
+
+        self.performance = max(0, min(100, self.performance + delta))
+        print(f"New performance: {self.performance}/100")
+
+    def is_fired(self):
+        return self.performance <= 0
+
+    def is_promotion_ready(self):
+        return self.performance >= 100
+
+
+class House:
+    def __init__(self, name, rent, tier, furniture_slots):
+        self.name = name
+        self.rent = rent
+        self.tier = tier
+        self.furniture_slots = furniture_slots
+
+
+class Item:
+    def __init__(self, name, price, category, bonuses):
+        """
+        bonuses: dict like {"happiness": +5, "performance": +3}
+        category: "clothes", "furniture", "electronics", "essential", "entertainment"
+        """
+        self.name = name
+        self.price = price
+        self.category = category
+        self.bonuses = bonuses
+
+
+# ------------- GAME DATA -------------
+
+HOUSES = [
+    House("Tiny Studio", rent=50, tier=1, furniture_slots=2),
+    House("Small Apartment", rent=100, tier=2, furniture_slots=4),
+    House("Townhouse", rent=200, tier=3, furniture_slots=6),
+    House("Luxury Home", rent=400, tier=4, furniture_slots=10),
+]
+
+JOBS = [
+    Job(
+        "Fast Food Worker",
+        base_salary=40,
+        tier=1,
+        choices=[
+            ("Clean the tables thoroughly", "good"),
+            ("Chat with coworkers instead of working", "bad"),
+            ("Do the bare minimum", "neutral"),
+        ],
+    ),
+    Job(
+        "Dog Walker",
+        base_salary=45,
+        tier=1,
+        choices=[
+            ("Take the dogs on a long, fun walk", "good"),
+            ("Scroll on your phone while they tangle leashes", "bad"),
+            ("Short but okay walk", "neutral"),
+        ],
+    ),
+    Job(
+        "Retail Assistant at Sephora",
+        base_salary=55,
+        tier=2,
+        choices=[
+            ("Help a customer find the perfect shade", "good"),
+            ("Ignore a customer to check your phone", "bad"),
+            ("Restock shelves quietly", "neutral"),
+        ],
+    ),
+    Job(
+        "Fashion Buyer",
+        base_salary=90,
+        tier=3,
+        choices=[
+            ("Spot a new trend early", "good"),
+            ("Order way too much of an unpopular item", "bad"),
+            ("Play it safe with average choices", "neutral"),
+        ],
+    ),
+    Job(
+        "Influencer / Content Creator",
+        base_salary=120,
+        tier=4,
+        choices=[
+            ("Post a creative, authentic video", "good"),
+            ("Post a rushed, low‑effort ad", "bad"),
+            ("Post nothing today", "neutral"),
+        ],
+    ),
+]
+
+MALL_ITEMS = {
+    "Ground Floor": [
+        Item("Primark Basics Outfit", 30, "clothes", {"performance": 2}),
+        Item("Boots Skincare Set", 40, "essential", {"happiness": 3, "performance": 2}),
+        Item("TK Maxx Lamp", 35, "furniture", {"happiness": 2}),
+    ],
+    "Middle Floor": [
+        Item("River Island Outfit", 80, "clothes", {"performance": 5, "status": 3}),
+        Item("Zara Smart Outfit", 90, "clothes", {"performance": 6, "status": 4}),
+        Item("Sephora Makeup Kit", 70, "clothes", {"performance": 4, "happiness": 3}),
+    ],
+    "Top Floor": [
+        Item("Apple iPhone", 300, "electronics", {"performance": 4, "side_gig": 1}),
+        Item("IKEA Sofa", 150, "furniture", {"happiness": 5}),
+        Item("Cinema Ticket", 15, "entertainment", {"happiness": 4}),
+        Item("Café Nero Latte", 5, "entertainment", {"happiness": 1}),
+    ],
+}
+
+VACATIONS = [
+    ("Weekend in Brighton", 150, {"happiness": 8}),
+    ("City Break in Paris", 400, {"happiness": 15, "status": 5}),
+    ("Luxury Week in Maldives", 2000, {"happiness": 35, "status": 15}),
+]
+
+FLIGHT_CLASSES = [
+    ("Economy", 0, {"happiness": 0}),
+    ("Business", 200, {"happiness": 5, "status": 3}),
+    ("First Class", 600, {"happiness": 12, "status": 8}),
+]
+
+
+# ------------- PLAYER -------------
+
+class Player:
+    def __init__(self):
+        self.money = 50
+        self.job = None
+        self.house = HOUSES[0]
+        self.happiness = 50  # 0–100
+        self.status = 0
+        self.inventory = []
+        self.day = 1
+
+    def apply_bonuses(self, bonuses):
+        self.happiness = max(0, min(100, self.happiness + bonuses.get("happiness", 0)))
+        self.status += bonuses.get("status", 0)
+
+    def pay_rent(self):
+        print(f"\nRent day! Your {self.house.name} costs £{self.house.rent}.")
+        if self.money >= self.house.rent:
+            self.money -= self.house.rent
+            print(f"You paid rent. Money left: £{self.money}")
+        else:
+            print("You couldn't pay full rent. Your happiness drops.")
+            self.happiness = max(0, self.happiness - 10)
+
+    def show_stats(self):
+        print("\n--- YOUR LIFE ---")
+        print(f"Day: {self.day}")
+        print(f"Money: £{self.money}")
+        print(f"House: {self.house.name} (Rent: £{self.house.rent})")
+        print(f"Happiness: {self.happiness}/100")
+        print(f"Status: {self.status}")
+        if self.job:
+            print(f"Job: {self.job.name} (Performance: {self.job.performance}/100)")
+        else:
+            print("Job: Unemployed")
+        print(f"Inventory: {[item.name for item in self.inventory] or 'Empty'}")
+        print("-----------------\n")
+
+
+# ------------- GAME LOGIC -------------
+
+def choose_starting_job(player: Player):
+    print(dedent("""
+        You are starting your life with £50, a Tiny Studio, and no job.
+        Choose one of three starting jobs:
+    """))
+
+    starting_jobs = [JOBS[0], JOBS[1], JOBS[2]]  # Fast Food, Dog Walker, Sephora
+    for i, job in enumerate(starting_jobs, start=1):
+        print(f"  {i}. {job.name} (Base salary: £{job.base_salary})")
+
+    while True:
+        choice = input("> ").strip()
+        if choice.isdigit() and 1 <= int(choice) <= len(starting_jobs):
+            player.job = starting_jobs[int(choice) - 1]
+            print(f"You start working as a {player.job.name}.")
+            break
+        print("Invalid choice, try again.")
+
+
+def go_to_work(player: Player):
+    if not player.job:
+        print("You don't have a job yet.")
+        return
+
+    salary = player.job.work_day()
+    player.money += salary
+
+    if player.job.is_fired():
+        print("\nYour performance hit 0. You got fired.")
+        player.job = None
+    elif player.job.is_promotion_ready():
+        print("\nYour performance hit 100! You are ready for a promotion or a better job.")
+        upgrade_job(player)
+
+
+def upgrade_job(player: Player):
+    current_tier = player.job.tier if player.job else 0
+    available = [job for job in JOBS if job.tier > current_tier and job.tier <= player.house.tier + 1]
+
+    if not available:
+        print("No better jobs available yet. Maybe upgrade your house or status.")
+        return
+
+    print("\nYou can choose a better job:")
+    for i, job in enumerate(available, start=1):
+        print(f"  {i}. {job.name} (Base salary: £{job.base_salary}, Tier: {job.tier})")
+
+    choice = input("> ").strip()
+    if choice.isdigit() and 1 <= int(choice) <= len(available):
+        player.job = available[int(choice) - 1]
+        print(f"You are now working as a {player.job.name}.")
+    else:
+        print("You stay in your current job for now.")
+
+
+def visit_mall(player: Player):
+    if player.money < 15:
+        print("You don't really have enough money to enjoy the mall right now.")
+        return
+
+    print("\nYou go to the mall (Westgate‑style). You can visit up to 3 shops.")
+    visits = 0
+    while visits < 3:
+        print("\nFloors:")
+        print("  1. Ground Floor (Primark, Boots, TK Maxx)")
+        print("  2. Middle Floor (River Island, Zara, Sephora)")
+        print("  3. Top Floor (Apple, IKEA, Cinema, Café Nero)")
+        print("  4. Leave the mall")
+
+        floor_choice = input("> ").strip()
+        if floor_choice == "4":
+            break
+
+        floor_map = {"1": "Ground Floor", "2": "Middle Floor", "3": "Top Floor"}
+        if floor_choice not in floor_map:
+            print("Invalid floor.")
+            continue
+
+        floor_name = floor_map[floor_choice]
+        items = MALL_ITEMS[floor_name]
+        print(f"\nYou are on the {floor_name}. Shops have these items:")
+
+        for i, item in enumerate(items, start=1):
+            print(f"  {i}. {item.name} (£{item.price}) [{item.category}] bonuses={item.bonuses}")
+        print(f"  {len(items)+1}. Go back")
+
+        choice = input("> ").strip()
+        if not choice.isdigit():
+            print("Invalid choice.")
+            continue
+
+        choice = int(choice)
+        if choice == len(items) + 1:
+            continue
+        if not (1 <= choice <= len(items)):
+            print("Invalid choice.")
+            continue
+
+        item = items[choice - 1]
+        if player.money < item.price:
+            print("You can't afford that.")
+            continue
+
+        player.money -= item.price
+        player.inventory.append(item)
+        player.apply_bonuses(item.bonuses)
+        print(f"You bought {item.name}. Money left: £{player.money}")
+        visits += 1
+
+    print("You leave the mall.")
+
+
+def upgrade_house(player: Player):
+    print("\nAvailable houses:")
+    for i, house in enumerate(HOUSES, start=1):
+        owned = "(current)" if house is player.house else ""
+        print(f"  {i}. {house.name} – Rent £{house.rent}, Tier {house.tier} {owned}")
+
+    print("Choose a house to move into (or press Enter to cancel):")
+    choice = input("> ").strip()
+    if not choice:
+        return
+    if not choice.isdigit() or not (1 <= int(choice) <= len(HOUSES)):
+        print("Invalid choice.")
+        return
+
+    new_house = HOUSES[int(choice) - 1]
+    if new_house is player.house:
+        print("You already live here.")
+        return
+
+    cost = new_house.rent * 3  # upfront cost
+    print(f"Moving into {new_house.name} will cost an upfront £{cost}. Continue? (y/n)")
+    confirm = input("> ").strip().lower()
+    if confirm != "y":
+        return
+
+    if player.money < cost:
+        print("You can't afford to move.")
+        return
+
+    player.money -= cost
+    player.house = new_house
+    print(f"You moved into {new_house.name}. Money left: £{player.money}")
+
+
+def take_vacation(player: Player):
+    print("\nWhere would you like to go on vacation?")
+    for i, (name, base_cost, bonuses) in enumerate(VACATIONS, start=1):
+        print(f"  {i}. {name} – Base cost £{base_cost}, bonuses={bonuses}")
+    print("  0. Cancel")
+
+    choice = input("> ").strip()
+    if not choice.isdigit() or not (0 <= int(choice) <= len(VACATIONS)):
+        print("Invalid choice.")
+        return
+    if choice == "0":
+        return
+
+    vacation = VACATIONS[int(choice) - 1]
+
+    print("\nChoose flight class:")
+    for i, (cls, extra_cost, bonuses) in enumerate(FLIGHT_CLASSES, start=1):
+        print(f"  {i}. {cls} – Extra £{extra_cost}, bonuses={bonuses}")
+    cls_choice = input("> ").strip()
+    if not cls_choice.isdigit() or not (1 <= int(cls_choice) <= len(FLIGHT_CLASSES)):
+        print("Invalid choice.")
+        return
+
+    flight = FLIGHT_CLASSES[int(cls_choice) - 1]
+
+    total_cost = vacation[1] + flight[1]
+    print(f"\nTotal cost: £{total_cost}. Continue? (y/n)")
+    confirm = input("> ").strip().lower()
+    if confirm != "y":
+        return
+
+    if player.money < total_cost:
+        print("You can't afford this vacation.")
+        return
+
+    player.money -= total_cost
+    bonuses = {}
+    for k, v in vacation[2].items():
+        bonuses[k] = bonuses.get(k, 0) + v
+    for k, v in flight[2].items():
+        bonuses[k] = bonuses.get(k, 0) + v
+
+    player.apply_bonuses(bonuses)
+    print(f"You went on vacation to {vacation[0]} in {flight[0]} class!")
+    print(f"Bonuses applied: {bonuses}")
+    print(f"Money left: £{player.money}, Happiness: {player.happiness}, Status: {player.status}")
+
+
+def check_win_lose(player: Player):
+    if player.happiness <= 0:
+        print("\nYou burned out. Game over.")
+        return True
+    if player.money >= 1_000_000 and player.house is HOUSES[-1] and player.status >= 50:
+        print("\nYou made it: millionaire, luxury home, high status. You win at life!")
+        return True
+    return False
+
+
+def main_loop():
+    player = Player()
+    print(dedent("""
+        ------------------------------------
+        WELCOME TO LIFE MALL SIM (TEXT EDITION)
+        ------------------------------------
+        You start poor, in a tiny studio, with £50.
+        Work, shop, upgrade your home, travel, and try not to get fired.
+    """))
+
+    choose_starting_job(player)
+
+    while True:
+        player.show_stats()
+        print("What do you want to do today?")
+        print("  1. Go to work")
+        print("  2. Visit the mall")
+        print("  3. Upgrade / change house")
+        print("  4. Go on vacation")
+        print("  5. Skip day / rest")
+        print("  6. Quit game")
+
+        choice = input("> ").strip()
+        if choice == "1":
+            go_to_work(player)
+        elif choice == "2":
+            visit_mall(player)
+        elif choice == "3":
+            upgrade_house(player)
+        elif choice == "4":
+            take_vacation(player)
+        elif choice == "5":
+            print("You take a quiet day. Slight happiness boost.")
+            player.happiness = min(100, player.happiness + 2)
+        elif choice == "6":
+            print("Thanks for playing!")
+            sys.exit(0)
+        else:
+            print("Invalid choice.")
+
+        # Rent every 7 days
+        if player.day % 7 == 0:
+            player.pay_rent()
+
+        if check_win_lose(player):
+            break
+
+        player.day += 1
+
+
+if __name__ == "__main__":
+    main_loop()
