@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>MallLife – Browser Prototype</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #111;
+      color: #f5f5f5;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      height: 100vh;
+    }
+    #game {
+      margin: auto;
+      width: 900px;
+      max-width: 95vw;
+      background: #1b1b1b;
+      border-radius: 10px;
+      padding: 20px;
+      box-shadow: 0 0 20px rgba(0,0,0,0.6);
+    }
+    h1, h2, h3 {
+      margin-top: 0;
+    }
+    .row {
+      display: flex;
+      gap: 20px;
+      flex-wrap: wrap;
+    }
+    .panel {
+      flex: 1;
+      min-width: 260px;
+      background: #222;
+      border-radius: 8px;
+      padding: 10px 12px;
+      box-sizing: border-box;
+    }
+    button {
+      background: #3b82f6;
+      border: none;
+      color: white;
+      padding: 6px 10px;
+      border-radius: 4px;
+      cursor: pointer;
+      margin: 2px 0;
+      font-size: 14px;
+    }
+    button:hover {
+      background: #2563eb;
+    }
+    button:disabled {
+      background: #555;
+      cursor: default;
+    }
+    .stat {
+      font-size: 14px;
+      margin: 2px 0;
+    }
+    .item {
+      font-size: 13px;
+      margin: 2px 0;
+    }
+    #log {
+      max-height: 200px;
+      overflow-y: auto;
+      background: #111;
+      padding: 8px;
+      border-radius: 6px;
+      font-size: 13px;
+    }
+    .log-entry {
+      margin-bottom: 4px;
+    }
+    .tag {
+      display: inline-block;
+      padding: 1px 6px;
+      border-radius: 4px;
+      font-size: 11px;
+      margin-left: 4px;
+      background: #444;
+      color: #ddd;
+    }
+    .tag-job { background: #16a34a; }
+    .tag-buy { background: #eab308; }
+    .tag-home { background: #ec4899; }
+    .tag-story { background: #8b5cf6; }
+    .tag-try { background: #f97316; }
+  </style>
+</head>
+<body>
+  <div id="game">
+    <h1>MallLife – Browser Prototype</h1>
+    <p style="font-size:14px;opacity:0.8;">
+      Start poor, do mall jobs, earn money, buy items, upgrade your home.  
+      This is a simple prototype you can put on GitHub Pages.
+    </p>
+
+    <div class="row">
+      <div class="panel">
+        <h2>Player</h2>
+        <div class="stat" id="stat-day"></div>
+        <div class="stat" id="stat-money"></div>
+        <div class="stat" id="stat-home"></div>
+        <div class="stat" id="stat-capacity"></div>
+        <div class="stat" id="stat-items"></div>
+        <button id="btn-end-day">End Day</button>
+      </div>
+
+      <div class="panel">
+        <h2>Mall Jobs</h2>
+        <div id="jobs-list"></div>
+        <button id="btn-refresh-jobs">Refresh Jobs</button>
+      </div>
+
+      <div class="panel">
+        <h2>Shop</h2>
+        <div id="shop-list"></div>
+      </div>
+    </div>
+
+    <div class="row" style="margin-top:20px;">
+      <div class="panel">
+        <h2>Inventory & Try Out</h2>
+        <div id="inventory-list"></div>
+      </div>
+
+      <div class="panel">
+        <h2>Home Upgrades</h2>
+        <div id="homes-list"></div>
+      </div>
+
+      <div class="panel">
+        <h2>Story & Log</h2>
+        <div id="story"></div>
+        <div id="log"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // -----------------------------
+    // Data
+    // -----------------------------
+    const jobs = [
+      { name: "Clothing Store Assistant", pay: 20, desc: "Fold shirts and help customers." },
+      { name: "Food Court Worker", pay: 25, desc: "Serve food to hungry shoppers." },
+      { name: "Mall Security Helper", pay: 30, desc: "Help find lost items." },
+      { name: "Arcade Attendant", pay: 35, desc: "Keep the arcade running and help players." },
+      { name: "Electronics Repair Helper", pay: 40, desc: "Assist with simple gadget fixes." },
+    ];
+
+    const items = [
+      { name: "Cool Hoodie", price: 30, category: "clothes", fun: "You walk the mall runway in your hoodie. People clap!" },
+      { name: "Designer Shoes", price: 50, category: "clothes", fun: "You strut down the runway with serious style." },
+      { name: "Football", price: 25, category: "sports", fun: "You score a goal in the mini sports arena." },
+      { name: "Skateboard", price: 40, category: "sports", fun: "You roll through the skate park and land a simple trick." },
+      { name: "Drone", price: 60, category: "electronics", fun: "You fly the drone through glowing rings in the tech zone." },
+      { name: "Headphones", price: 35, category: "electronics", fun: "You nail the beat in a rhythm mini-game." },
+      { name: "Burger Meal", price: 15, category: "food", fun: "You eat the burger and feel a burst of energy." },
+      { name: "Fancy Sofa", price: 80, category: "furniture", fun: "You place the sofa at home. It looks way nicer now." },
+      { name: "Gaming PC", price: 120, category: "electronics", fun: "You set up the PC at home. Peak gamer vibes." },
+    ];
+
+    const homes = [
+      { name: "Tiny Studio", cost: 0, capacity: 5, desc: "A very small studio with old furniture." },
+      { name: "Small Apartment", cost: 150, capacity: 10, desc: "A modest apartment with a bit more space." },
+      { name: "Modern Flat", cost: 400, capacity: 20, desc: "A stylish flat with room for many items." },
+      { name: "Penthouse Suite", cost: 1000, capacity: 40, desc: "A luxurious penthouse overlooking the city." },
+    ];
+
+    // -----------------------------
+    // Player state
+    // -----------------------------
+    const player = {
+      day: 1,
+      money: 50,
+      homeIndex: 0,
+      inventory: [],
+    };
+
+    let availableJobs = [];
+
+    // -----------------------------
+    // Helpers
+    // -----------------------------
+    function log(message, tagClass) {
+      const logEl = document.getElementById("log");
+      const div = document.createElement("div");
+      div.className = "log-entry";
+      div.innerHTML = message + (tagClass ? ` <span class="tag ${tagClass}">${tagClass.replace("tag-","")}</span>` : "");
+      logEl.prepend(div);
+    }
+
+    function updateStats() {
+      const home = homes[player.homeIndex];
+      document.getElementById("stat-day").textContent = "Day: " + player.day;
+      document.getElementById("stat-money").textContent = "Money: £" + player.money;
+      document.getElementById("stat-home").textContent = "Home: " + home.name;
+      document.getElementById("stat-capacity").textContent = "Capacity: " + home.capacity;
+      document.getElementById("stat-items").textContent = "Items owned: " + player.inventory.length;
+    }
+
+    function randomJobs() {
+      const shuffled = [...jobs].sort(() => Math.random() - 0.5);
+      availableJobs = shuffled.slice(0, 3);
+    }
+
+    function renderJobs() {
+      const container = document.getElementById("jobs-list");
+      container.innerHTML = "";
+      availableJobs.forEach((job, index) => {
+        const div = document.createElement("div");
+        div.className = "item";
+        div.innerHTML = `
+          <strong>${job.name}</strong> – Pay: £${job.pay}<br>
+          <span style="opacity:0.8;">${job.desc}</span><br>
+          <button data-job="${index}">Do job</button>
+        `;
+        container.appendChild(div);
+      });
+
+      container.querySelectorAll("button[data-job]").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const idx = parseInt(btn.getAttribute("data-job"), 10);
+          doJob(availableJobs[idx]);
+        });
+      });
+    }
+
+    function doJob(job) {
+      // 90% success chance
+      const success = Math.random() < 0.9;
+      if (success) {
+        player.money += job.pay;
+        log(`You worked as ${job.name} and earned £${job.pay}.`, "tag-job");
+      } else {
+        log(`Your shift as ${job.name} went badly. You earned nothing.`, "tag-job");
+      }
+      updateStats();
+    }
+
+    function renderShop() {
+      const container = document.getElementById("shop-list");
+      container.innerHTML = "";
+      items.forEach((item, index) => {
+        const div = document.createElement("div");
+        div.className = "item";
+        div.innerHTML = `
+          <strong>${item.name}</strong> – £${item.price} <span class="tag">${item.category}</span><br>
+          <button data-buy="${index}">Buy</button>
+        `;
+        container.appendChild(div);
+      });
+
+      container.querySelectorAll("button[data-buy]").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const idx = parseInt(btn.getAttribute("data-buy"), 10);
+          buyItem(items[idx]);
+        });
+      });
+    }
+
+    function currentCapacity() {
+      return homes[player.homeIndex].capacity;
+    }
+
+    function buyItem(item) {
+      if (player.money < item.price) {
+        log(`You can't afford ${item.name}.`, "tag-buy");
+        return;
+      }
+      if (player.inventory.length >= currentCapacity()) {
+        log("Your home is full. Upgrade your home to store more items.", "tag-buy");
+        return;
+      }
+      player.money -= item.price;
+      player.inventory.push(item);
+      log(`You bought ${item.name} for £${item.price}.`, "tag-buy");
+      updateStats();
+      renderInventory();
+    }
+
+    function renderInventory() {
+      const container = document.getElementById("inventory-list");
+      container.innerHTML = "";
+      if (player.inventory.length === 0) {
+        container.textContent = "You don't own any items yet.";
+        return;
+      }
+      player.inventory.forEach((item, index) => {
+        const div = document.createElement("div");
+        div.className = "item";
+        div.innerHTML = `
+          <strong>${item.name}</strong> – ${item.category}<br>
+          <button data-try="${index}">Try out</button>
+        `;
+        container.appendChild(div);
+      });
+
+      container.querySelectorAll("button[data-try]").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const idx = parseInt(btn.getAttribute("data-try"), 10);
+          tryItem(player.inventory[idx]);
+        });
+      });
+    }
+
+    function tryItem(item) {
+      log(item.fun, "tag-try");
+    }
+
+    function renderHomes() {
+      const container = document.getElementById("homes-list");
+      container.innerHTML = "";
+      homes.forEach((home, index) => {
+        const owned = index <= player.homeIndex;
+        const div = document.createElement("div");
+        div.className = "item";
+        div.innerHTML = `
+          <strong>${home.name}</strong> – Cost: £${home.cost}, Capacity: ${home.capacity}<br>
+          <span style="opacity:0.8;">${home.desc}</span><br>
+          <button data-home="${index}" ${owned ? "disabled" : ""}>
+            ${owned ? "Owned" : "Upgrade"}
+          </button>
+        `;
+        container.appendChild(div);
+      });
+
+      container.querySelectorAll("button[data-home]").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const idx = parseInt(btn.getAttribute("data-home"), 10);
+          upgradeHome(idx);
+        });
+      });
+    }
+
+    function upgradeHome(index) {
+      if (index <= player.homeIndex) {
+        log("You already own this home.", "tag-home");
+        return;
+      }
+      const home = homes[index];
+      if (player.money < home.cost) {
+        log("You can't afford this home yet.", "tag-home");
+        return;
+      }
+      player.money -= home.cost;
+      player.homeIndex = index;
+      log(`You upgraded your home to ${home.name}!`, "tag-home");
+      updateStats();
+      renderHomes();
+    }
+
+    function storyForDay(day) {
+      if (day === 1) {
+        return `You arrive at the mall as the new "Mall Helper". The manager smiles: "Work hard and you can change your life here."`;
+      } else if (day === 3) {
+        return `You overhear shopkeepers whispering about a secret shop that only opens late at night. They stop when they see you.`;
+      } else if (day === 5) {
+        return `The mall manager pulls you aside: "You're doing great. I might have a special opportunity for you soon."`;
+      } else if (day === 7) {
+        return `A mysterious flyer appears at home: "Mall Festival Coming Soon – Only the most stylish helpers get a VIP invite."`;
+      } else {
+        return `Nothing special happens today, but the mall feels full of possibilities.`;
+      }
+    }
+
+    function updateStory() {
+      const storyEl = document.getElementById("story");
+      storyEl.textContent = storyForDay(player.day);
+      log(`Day ${player.day}: ${storyForDay(player.day)}`, "tag-story");
+    }
+
+    function endDay() {
+      player.day += 1;
+      updateStats();
+      updateStory();
+      randomJobs();
+      renderJobs();
+    }
+
+    // -----------------------------
+    // Init
+    // -----------------------------
+    function init() {
+      randomJobs();
+      updateStats();
+      renderJobs();
+      renderShop();
+      renderInventory();
+      renderHomes();
+      updateStory();
+
+      document.getElementById("btn-refresh-jobs").addEventListener("click", () => {
+        randomJobs();
+        renderJobs();
+      });
+
+      document.getElementById("btn-end-day").addEventListener("click", () => {
+        endDay();
+      });
+
+      log("Welcome to MallLife – Browser Prototype!", "tag-story");
+    }
+
+    init();
+  </script>
+</body>
+</html>
